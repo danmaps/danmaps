@@ -1,0 +1,75 @@
+name: Update profile stats
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 9 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: profile-stats
+
+jobs:
+  cards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CARDS_ENABLED: ${{ secrets.CARDS_TOKEN != '' }}
+    steps:
+      - if: env.CARDS_ENABLED != 'true'
+        run: echo 'Add the CARDS_TOKEN Actions secret to enable profile stats.'
+      - if: env.CARDS_ENABLED == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - if: env.CARDS_ENABLED == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: pedrocatalao/github-cool-readme
+          ref: 98a281c29b954cc64ac63da655ea932e2cb62aea
+          path: cool-readme-source
+          persist-credentials: false
+      - if: env.CARDS_ENABLED == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - if: env.CARDS_ENABLED == 'true'
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund --prefix cool-readme-source
+      - name: Generate SVG cards
+        if: env.CARDS_ENABLED == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.CARDS_TOKEN }}
+        run: |
+          printf 'user: danmaps\nstyle: classic\n' > "$RUNNER_TEMP/cards.yml"
+          node cool-readme-source/src/cli.ts --config "$RUNNER_TEMP/cards.yml" --out stats
+      - name: Publish cards and link them from the README
+        if: env.CARDS_ENABLED == 'true'
+        run: |
+          git add -- stats/summary-light.svg stats/summary-dark.svg stats/languages-light.svg stats/languages-dark.svg stats/contributions-light.svg stats/contributions-dark.svg stats/weekly-light.svg stats/weekly-dark.svg
+          if ! grep -Fq '<!-- cool-readme:start -->' README.md; then
+            cat >> README.md <<'EOF'
+
+          <!-- cool-readme:start -->
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="stats/summary-dark.svg">
+            <img src="stats/summary-light.svg" alt="GitHub contribution summary">
+          </picture>
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="stats/languages-dark.svg">
+            <img src="stats/languages-light.svg" alt="Most used languages">
+          </picture>
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="stats/contributions-dark.svg">
+            <img src="stats/contributions-light.svg" alt="Notable open source contributions">
+          </picture>
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="stats/weekly-dark.svg">
+            <img src="stats/weekly-light.svg" alt="Weekly contribution rhythm">
+          </picture>
+          <!-- cool-readme:end -->
+          EOF
+          fi
+          git add -- README.md
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Update profile stats'
+          git push origin HEAD
