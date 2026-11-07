@@ -15,10 +15,22 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: pedrocatalao/github-cool-readme@v1
+      - uses: actions/setup-node@v4
         with:
-          token: ${{ secrets.CARDS_TOKEN }}
-          output: ${{ runner.temp }}/cards
+          node-version: 24
+      - name: Generate cards
+        env:
+          GITHUB_TOKEN: ${{ secrets.CARDS_TOKEN }}
+          CONFIG: cool-readme.yml
+          OUTPUT: ${{ runner.temp }}/cards
+        run: |
+          ACTION_DIR="$RUNNER_TEMP/github-cool-readme"
+          git clone --quiet --depth 1 --branch v1 https://github.com/pedrocatalao/github-cool-readme.git "$ACTION_DIR"
+          sed -i 's/!item\.repository/!item?.repository/g; s/!n\.repository/!n?.repository/g' "$ACTION_DIR/src/collect.ts"
+          npm ci --omit=dev --no-audit --no-fund --prefix "$ACTION_DIR"
+          args=(--out "$OUTPUT")
+          if [ -f "$CONFIG" ]; then args+=(--config "$CONFIG"); fi
+          node "$ACTION_DIR/src/cli.ts" "${args[@]}"
       # The cards live on their own branch, as a single commit replaced on each change, so they
       # don't add to the history of your main branch.
       - name: Publish the cards on the cards branch
